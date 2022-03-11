@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, SequentialSampler
 from data_load_opt.utils import get_data
 from transformers import AutoTokenizer
+from data_load_opt.bucket_smapler import BucketSampler
 
 
 class ClassifyDataset(Dataset):
@@ -18,8 +19,7 @@ class ClassifyDataset(Dataset):
 
     def _trunk(self, feature):
         if len(feature) > self.max_len - 1:
-            feature = feature[:self.max_len - 1]
-        feature = feature + [feature[-1]]
+            feature = feature[:self.max_len - 1] + [feature[-1]] # 保留sep特殊字符
         return feature
 
     def __getitem__(self, idx):
@@ -61,15 +61,19 @@ if __name__ == '__main__':
 
     # 构建dataset、dataloader、sampler
     train_dataset = ClassifyDataset(features, examples)
-    train_sampler = SequentialSampler(train_dataset)
+    train_sampler = BucketSampler(train_dataset)
+    # train_sampler = SequentialSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset,
         sampler=train_sampler,
-        batch_size=4, collate_fn=batch_list_to_batch_tensors)
+        batch_size=4,
+        collate_fn=batch_list_to_batch_tensors)
 
     # 获取训练数据
-    for step, batch in enumerate(train_dataloader):
-        print(batch.shape)
+    for e in range(2):
+        for step, batch in enumerate(train_dataloader):
+            print(batch.shape)
+        print("epoch done.")
 
 
 
