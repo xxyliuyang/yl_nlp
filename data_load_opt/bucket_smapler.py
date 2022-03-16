@@ -13,8 +13,8 @@ class BucketSampler(Sampler):
         return value + noise
 
     def __iter__(self):
-        self.noisy_lengths = [self._add_noise_to_value(l) for l in self.lengths]
-        indice_lengths = [(idx, length) for idx, length in enumerate(self.noisy_lengths)]
+        noisy_lengths = [self._add_noise_to_value(l) for l in self.lengths]
+        indice_lengths = [(idx, length) for idx, length in enumerate(noisy_lengths)]
         indice_lengths.sort(key=lambda x: x[1])
         return iter([indice_length[0] for indice_length in indice_lengths])
 
