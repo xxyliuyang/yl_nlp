@@ -70,7 +70,7 @@ if __name__ == '__main__':
         collate_fn=batch_list_to_batch_tensors)
 
     # 获取训练数据
-    for e in range(2):
+    for e in range(10):
         for step, batch in enumerate(train_dataloader):
             print(batch.shape)
         print("epoch done.")

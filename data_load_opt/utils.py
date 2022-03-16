@@ -96,9 +96,9 @@ def get_data(data_dir, data_seed=159, is_test=True):
     examples['dev'] = processor.get_dev_examples()
     examples['test'] = processor.get_test_examples()
     if is_test:
-        examples['train'] = examples['train'][:30]
-        examples['dev'] = examples['dev'][:30]
-        examples['test'] = examples['test'][:30]
+        examples['train'] = examples['train']
+        examples['dev'] = examples['dev']
+        examples['test'] = examples['test']
     return examples, processor.get_labels(examples)
 
 if __name__ == '__main__':
