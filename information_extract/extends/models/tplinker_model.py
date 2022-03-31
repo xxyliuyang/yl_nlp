@@ -8,6 +8,7 @@ from torch import nn
 import torch
 import json
 from information_extract.extends.modules.HandshakingKernel import HandshakingKernel
+from information_extract.extends.modules.HandshakingTaggingScheme import HandshakingTaggingScheme
 
 @Model.register("tplinker")
 class TPlinkerModel(Model):
@@ -20,6 +21,8 @@ class TPlinkerModel(Model):
         super().__init__(vocab)
         self.encoder = AutoModel.from_pretrained(model_name)
         hidden_size = self.encoder.config.hidden_size
+
+        self.cross_en = nn.CrossEntropyLoss()
 
         # 关系种类
         rel2id = json.load(open(rel2id_file))
@@ -39,6 +42,51 @@ class TPlinkerModel(Model):
         self.ent_add_dist = False
         self.rel_add_dist = False
 
+    def get_logits(self, hidden_state):
+        # shaking_hiddens: (batch_size, 1 + ... + seq_len, hidden_size)
+        shaking_hiddens = self.handshaking_kernel(hidden_state)
+        shaking_hiddens4ent = shaking_hiddens
+        shaking_hiddens4rel = shaking_hiddens
+
+        # 计算logits
+        ent_shaking_outputs = self.ent_fc(shaking_hiddens4ent)
+        head_rel_shaking_outputs_list = []
+        for fc in self.head_rel_fc_list:
+            head_rel_shaking_outputs_list.append(fc(shaking_hiddens4rel))
+        tail_rel_shaking_outputs_list = []
+        for fc in self.tail_rel_fc_list:
+            tail_rel_shaking_outputs_list.append(fc(shaking_hiddens4rel))
+        head_rel_shaking_outputs = torch.stack(head_rel_shaking_outputs_list, dim=1)
+        tail_rel_shaking_outputs = torch.stack(tail_rel_shaking_outputs_list, dim=1)
+
+        return ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs
+
+    def get_batch_shaking_tag(self, meta_data: MetadataField):
+        """
+        convert spots to batch shaking seq tag
+        因长序列的stack是费时操作，所以写这个函数用作生成批量shaking tag
+        如果每个样本生成一条shaking tag再stack，一个32的batch耗时1s，太昂贵
+        spots: [(start_ind, end_ind, tag_id), ], for entiy
+        return:
+            batch_shake_seq_tag: (batch_size, shaking_seq_len)
+        """
+        length = []
+        ent_shaking_tags = []
+        head_rel_shaking_tags = []
+        tail_rel_shaking_tags = []
+
+        for meta in meta_data:
+            length.append(meta['length'])
+            ent_shaking_tags.append(meta['ent_shaking_tag'])
+            head_rel_shaking_tags.append(meta['head_rel_shaking_tag'])
+            tail_rel_shaking_tags.append(meta['tail_rel_shaking_tag'])
+        max_length = max(length)
+
+        batch_ent_shaking_tag = HandshakingTaggingScheme.sharing_shaking_tag4batch(ent_shaking_tags, max_length)
+        batch_head_rel_shaking_tag = HandshakingTaggingScheme.shaking_tag4batch(head_rel_shaking_tags, max_length)
+        batch_tail_rel_shaking_tag = HandshakingTaggingScheme.shaking_tag4batch(tail_rel_shaking_tags, max_length)
+        return batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag
+
 
     def forward(
             self,
@@ -53,20 +101,11 @@ class TPlinkerModel(Model):
         # last_hidden_state: (batch_size, seq_len, hidden_size)
         last_hidden_state = context_outputs[0]
 
-        # shaking_hiddens: (batch_size, 1 + ... + seq_len, hidden_size)
-        shaking_hiddens = self.handshaking_kernel(last_hidden_state)
-        shaking_hiddens4ent = shaking_hiddens
-        shaking_hiddens4rel = shaking_hiddens
-        # 计算logits
-        ent_shaking_outputs = self.ent_fc(shaking_hiddens4ent)
-        head_rel_shaking_outputs_list = []
-        for fc in self.head_rel_fc_list:
-            head_rel_shaking_outputs_list.append(fc(shaking_hiddens4rel))
-        tail_rel_shaking_outputs_list = []
-        for fc in self.tail_rel_fc_list:
-            tail_rel_shaking_outputs_list.append(fc(shaking_hiddens4rel))
-        head_rel_shaking_outputs = torch.stack(head_rel_shaking_outputs_list, dim=1)
-        tail_rel_shaking_outputs = torch.stack(tail_rel_shaking_outputs_list, dim=1)
+        # logits
+        ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs = self.get_logits(last_hidden_state)
+
+        # transfer_tag
+        batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag = self.get_batch_shaking_tag(meta_data)
 
         # 计算loss
         loss = self.loss_func(ent_shaking_outputs, batch_ent_shaking_tag) \
@@ -75,8 +114,5 @@ class TPlinkerModel(Model):
         outputs["loss"] = loss
         return outputs
 
-    def loss_func(self, weights=None):
-        if weights is not None:
-            weights = torch.FloatTensor(weights)
-        cross_en = nn.CrossEntropyLoss(weight = weights)
-        return lambda pred, target: cross_en(pred.view(-1, pred.size()[-1]), target.view(-1))
+    def loss_func(self, pred, target):
+        return self.cross_en(pred.view(-1, pred.size()[-1]), target.view(-1))

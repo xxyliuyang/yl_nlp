@@ -1,21 +1,21 @@
 import json
 import logging
 import os
-from typing import Dict, Optional, Iterable
+from typing import Dict, Iterable
 
 from allennlp.common.file_utils import cached_path
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.fields import Field, MetadataField, TextField
 from allennlp.data.instance import Instance
-from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
-from allennlp.data.tokenizers import SpacyTokenizer, Tokenizer
+from allennlp.data.token_indexers import TokenIndexer
+from allennlp.data.tokenizers import Tokenizer
 from overrides import overrides
 
 logger = logging.getLogger(__name__)
 os.environ["MKL_THREADING_LAYER"] = "GNU"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from information_extract.extends.readers.HandshakingTaggingScheme import HandshakingTaggingScheme
+from information_extract.extends.modules.HandshakingTaggingScheme import HandshakingTaggingScheme
 
 @DatasetReader.register("tplinker")
 class TPlinkerReader(DatasetReader):
@@ -35,8 +35,7 @@ class TPlinkerReader(DatasetReader):
         self._indexers = token_indexers
         self._max_tokens = max_tokens
 
-        self.handshaking_tagger = HandshakingTaggingScheme(
-            rel2id=json.load(open(rel2id_file)), max_seq_len=32)
+        self.handshaking_tagger = HandshakingTaggingScheme(rel2id=json.load(open(rel2id_file)))
         self.count = 0
 
     @overrides

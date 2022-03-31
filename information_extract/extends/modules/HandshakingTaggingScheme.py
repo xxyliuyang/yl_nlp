@@ -2,7 +2,7 @@ import torch
 
 class HandshakingTaggingScheme(object):
     """docstring for HandshakingTaggingScheme"""
-    def __init__(self, rel2id, max_seq_len):
+    def __init__(self, rel2id):
         super(HandshakingTaggingScheme, self).__init__()
         self.rel2id = rel2id
         self.id2rel = {ind :rel for rel, ind in rel2id.items()}
@@ -76,3 +76,49 @@ class HandshakingTaggingScheme(object):
         for sp in spots:
             shaking_tag[sp[0]][sp[1]][sp[2]] = sp[3]
         return shaking_tag.tolist()
+
+
+    @classmethod
+    def matrix_tag2seq_tag(cls, matrix_tag, max_length):
+        shake_seq_tag = []
+        length = len(matrix_tag)
+
+        for i, row in enumerate(matrix_tag):
+            shake_seq_tag += row[i:]
+            shake_seq_tag += [0 for _ in range(max_length - length)]
+        while i < max_length:
+            i += 1
+            shake_seq_tag += [0 for _ in range((max_length - i))]
+        return shake_seq_tag
+
+    @classmethod
+    def sharing_shaking_tag4batch(cls, ent_shaking_tags, max_length):
+        """
+        tags:  (length, length)
+        return:
+            batch_shake_seq_tag: (batch_size, shaking_seq_len)
+        """
+        batch_shake_seq_tag = []
+
+        for ent_shaking_tag in ent_shaking_tags:
+            shake_seq_tag = cls.matrix_tag2seq_tag(ent_shaking_tag, max_length)
+            batch_shake_seq_tag.append(shake_seq_tag)
+        return batch_shake_seq_tag
+
+    @classmethod
+    def shaking_tag4batch(cls, shaking_tags, max_length):
+        '''
+        convert spots to batch shaking seq tag
+        spots: (rel_size, length, length)
+        return:
+            batch_shake_seq_tag: (batch_size, rel_size, shaking_seq_len)
+        '''
+
+        batch_shake_seq_tag = []
+        for shaking_tag in shaking_tags:
+            rel_seq_tag = []
+            for rel_shaking_tag in shaking_tag:
+                shake_seq_tag = cls.matrix_tag2seq_tag(rel_shaking_tag, max_length)
+                rel_seq_tag.append(shake_seq_tag)
+            batch_shake_seq_tag.append(rel_seq_tag)
+        return batch_shake_seq_tag
