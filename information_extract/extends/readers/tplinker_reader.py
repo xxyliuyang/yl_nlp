@@ -16,6 +16,7 @@ os.environ["MKL_THREADING_LAYER"] = "GNU"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from information_extract.extends.modules.HandshakingTaggingScheme import HandshakingTaggingScheme
+from information_extract.extends.readers.span_processor import SpanPreprocessor
 
 @DatasetReader.register("tplinker")
 class TPlinkerReader(DatasetReader):
@@ -36,6 +37,9 @@ class TPlinkerReader(DatasetReader):
         self._max_tokens = max_tokens
 
         self.handshaking_tagger = HandshakingTaggingScheme(rel2id=json.load(open(rel2id_file)))
+        get_tok2char_span_map = lambda text: \
+            self._tokenizer.tokenizer.encode_plus(text, return_offsets_mapping=True, add_special_tokens=False)["offset_mapping"]
+        self.span_processor = SpanPreprocessor(tokenize_func=self._tokenizer.tokenizer.tokenize, get_tok2char_span_map_func=get_tok2char_span_map)
         self.count = 0
 
     @overrides
@@ -79,8 +83,13 @@ class TPlinkerReader(DatasetReader):
         return Instance(fields)
 
     def prepare_tag_matrix(self, record: Dict, length: int):
+        # 1.计算实体、关系的token span
+        self.span_processor.prepare_span_index(record)
+
+        # 2.计算spots
         ent_matrix_spots, head_rel_matrix_spots, tail_rel_matrix_spots = self.handshaking_tagger.get_spots(record)
 
+        # 3.计算tag矩阵
         ent_shaking_tag = self.handshaking_tagger.sharing_spots2shaking_tag(ent_matrix_spots, length)
         head_rel_shaking_tag = self.handshaking_tagger.spots2shaking_tag(head_rel_matrix_spots, length)
         tail_rel_shaking_tag = self.handshaking_tagger.spots2shaking_tag(tail_rel_matrix_spots, length)
