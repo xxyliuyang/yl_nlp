@@ -46,6 +46,7 @@ class HandshakingTaggingScheme(object):
             else:
                 head_rel_matrix_spots.append((self.rel2id[rel["predicate"]], obj_tok_span[0], subj_tok_span[0], self.tag2id_head_rel["REL-OH2SH"]))
 
+            # 尾部的index需要-1操作
             if subj_tok_span[1] <= obj_tok_span[1]:
                 tail_rel_matrix_spots.append((self.rel2id[rel["predicate"]], subj_tok_span[1] - 1, obj_tok_span[1] - 1, self.tag2id_tail_rel["REL-ST2OT"]))
             else:

@@ -235,7 +235,7 @@ class Preprocessor:
                 # 因为char to tok 也可能出现1对多的情况，比如韩文。所以char_span的pos1以第一个tok_ind为准，pos2以最后一个tok_ind为准
                 if tok_sp[0] == -1:
                     tok_sp[0] = tok_ind
-                tok_sp[1] = tok_ind + 1
+                tok_sp[1] = tok_ind + 1 # 尾部的index+1操作
         return char2tok_span
 
     def _get_ent2char_spans(self, text, entities, ignore_subword_match = True):
