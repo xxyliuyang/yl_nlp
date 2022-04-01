@@ -22,7 +22,7 @@ class TPlinkerModel(Model):
         self.encoder = AutoModel.from_pretrained(model_name)
         hidden_size = self.encoder.config.hidden_size
 
-        self.cross_en = nn.CrossEntropyLoss()
+        self.cross_en = nn.CrossEntropyLoss(ignore_index=-100)
 
         # 关系种类
         rel2id = json.load(open(rel2id_file))
@@ -61,7 +61,7 @@ class TPlinkerModel(Model):
 
         return ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs
 
-    def get_batch_shaking_tag(self, meta_data: MetadataField):
+    def get_batch_shaking_tag(self, meta_data: MetadataField, device):
         """
         convert spots to batch shaking seq tag
         因长序列的stack是费时操作，所以写这个函数用作生成批量shaking tag
@@ -85,8 +85,9 @@ class TPlinkerModel(Model):
         batch_ent_shaking_tag = HandshakingTaggingScheme.sharing_shaking_tag4batch(ent_shaking_tags, max_length)
         batch_head_rel_shaking_tag = HandshakingTaggingScheme.shaking_tag4batch(head_rel_shaking_tags, max_length)
         batch_tail_rel_shaking_tag = HandshakingTaggingScheme.shaking_tag4batch(tail_rel_shaking_tags, max_length)
-        return batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag
-
+        return torch.tensor(batch_ent_shaking_tag, device=device), \
+               torch.tensor(batch_head_rel_shaking_tag, device=device), \
+               torch.tensor(batch_tail_rel_shaking_tag, device=device)
 
     def forward(
             self,
@@ -105,7 +106,7 @@ class TPlinkerModel(Model):
         ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs = self.get_logits(last_hidden_state)
 
         # transfer_tag
-        batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag = self.get_batch_shaking_tag(meta_data)
+        batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag = self.get_batch_shaking_tag(meta_data, input_ids.device)
 
         # 计算loss
         loss = self.loss_func(ent_shaking_outputs, batch_ent_shaking_tag) \

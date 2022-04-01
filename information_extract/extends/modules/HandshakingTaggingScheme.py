@@ -85,10 +85,10 @@ class HandshakingTaggingScheme(object):
 
         for i, row in enumerate(matrix_tag):
             shake_seq_tag += row[i:]
-            shake_seq_tag += [0 for _ in range(max_length - length)]
+            shake_seq_tag += [-100 for _ in range(max_length - length)] # pad
         while i < max_length:
             i += 1
-            shake_seq_tag += [0 for _ in range((max_length - i))]
+            shake_seq_tag += [-100 for _ in range((max_length - i))] # pad
         return shake_seq_tag
 
     @classmethod
