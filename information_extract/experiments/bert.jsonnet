@@ -1,7 +1,7 @@
 local model_name = "../resources/bert-base-cased";
-local train_data = './data/nyt/demo.json';
-local dev_data = './data/nyt/demo.json';
-local rel2id_file = './data/nyt/rel2id.json';
+local train_data = './data/data4bert/nyt/demo.json';
+local dev_data = './data/data4bert/nyt/demo.json';
+local rel2id_file = './data/data4bert/nyt/rel2id.json';
 
 {
     "train_data_path": train_data,
