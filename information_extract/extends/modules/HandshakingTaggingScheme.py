@@ -123,3 +123,60 @@ class HandshakingTaggingScheme(object):
                 rel_seq_tag.append(shake_seq_tag)
             batch_shake_seq_tag.append(rel_seq_tag)
         return batch_shake_seq_tag
+
+
+    # -------------解码------------------------
+
+    def get_sharing_spots_fr_shaking_tag(self, shaking_tag, shaking_ind2matrix_ind):
+        '''
+        shaking_tag -> spots
+        shaking_tag: (shaking_seq_len, )
+        spots: [(start_ind, end_ind, tag_id), ]
+        '''
+        spots = []
+        for shaking_ind in shaking_tag.nonzero():
+            shaking_ind_ = shaking_ind[0].item()
+            tag_id = shaking_tag[shaking_ind_]
+            matrix_inds = shaking_ind2matrix_ind[shaking_ind_]
+            spot = (matrix_inds[0], matrix_inds[1], tag_id)
+            spots.append(spot)
+        return spots
+
+    def get_spots_fr_shaking_tag(self, shaking_tag, shaking_ind2matrix_ind):
+        '''
+        shaking_tag -> spots
+        shaking_tag: (rel_size, shaking_seq_len)
+        spots: [(rel_id, start_ind, end_ind, tag_id), ]
+        '''
+        spots = []
+
+        for shaking_inds in shaking_tag.nonzero():
+            rel_id = shaking_inds[0].item()
+            tag_id = shaking_tag[rel_id][shaking_inds[1]].item()
+            matrix_inds = shaking_ind2matrix_ind[shaking_inds[1]]
+            spot = (rel_id, matrix_inds[0], matrix_inds[1], tag_id)
+            spots.append(spot)
+        return spots
+
+    def get_shaking_ind2matrix_ind(self, matrix_size):
+        # mapping shaking sequence and matrix
+        # e.g. [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)]
+        shaking_ind2matrix_ind = [(ind, end_ind) for ind in range(matrix_size) for end_ind in
+                                       list(range(matrix_size))[ind:]]
+
+        matrix_ind2shaking_ind = [[0 for i in range(matrix_size)] for j in range(matrix_size)]
+        for shaking_ind, matrix_ind in enumerate(shaking_ind2matrix_ind):
+            matrix_ind2shaking_ind[matrix_ind[0]][matrix_ind[1]] = shaking_ind
+        return shaking_ind2matrix_ind
+
+    def decode_rel_fr_shaking_tag(self,
+                                  ent_shaking_tag,
+                                  head_rel_shaking_tag,
+                                  tail_rel_shaking_tag, max_length):
+        shaking_ind2matrix_ind = self.get_shaking_ind2matrix_ind(max_length)
+
+        ent_matrix_spots = self.get_sharing_spots_fr_shaking_tag(ent_shaking_tag, shaking_ind2matrix_ind)
+        head_rel_matrix_spots = self.get_spots_fr_shaking_tag(head_rel_shaking_tag, shaking_ind2matrix_ind)
+        tail_rel_matrix_spots = self.get_spots_fr_shaking_tag(tail_rel_shaking_tag, shaking_ind2matrix_ind)
+
+        return ent_matrix_spots, head_rel_matrix_spots, tail_rel_matrix_spots

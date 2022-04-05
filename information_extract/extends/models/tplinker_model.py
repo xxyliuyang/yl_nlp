@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Any
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.data.fields import MetadataField
@@ -29,6 +29,7 @@ class TPlinkerModel(Model):
         # 关系种类
         rel2id = json.load(open(rel2id_file))
         rel_size = len(rel2id)
+        self.handshaking_tagger = HandshakingTaggingScheme(rel2id=rel2id)
 
         self.ent_fc = nn.Linear(hidden_size, 2)
         self.head_rel_fc_list = [nn.Linear(hidden_size, 3) for _ in range(rel_size)]
@@ -111,6 +112,9 @@ class TPlinkerModel(Model):
 
         # logits
         ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs = self.get_logits(last_hidden_state)
+        outputs['batch_pred_ent_shaking_outputs'] = ent_shaking_outputs
+        outputs['batch_pred_head_rel_shaking_outputs'] = head_rel_shaking_outputs
+        outputs['batch_pred_tail_rel_shaking_outputs'] = tail_rel_shaking_outputs
 
         if meta_data:
             # transfer_tag
@@ -126,10 +130,35 @@ class TPlinkerModel(Model):
             outputs["ent_acc"] = self._ent_exact_match(ent_shaking_outputs, batch_ent_shaking_tag)
             outputs["head_acc"] = self._head_exact_match(head_rel_shaking_outputs, batch_head_rel_shaking_tag)
             outputs["tail_acc"] = self._tail_exact_match(tail_rel_shaking_outputs, batch_tail_rel_shaking_tag)
+
+            # ---解码---
+            self.make_output_human_readable(source_tokens, meta_data, outputs)
         return outputs
 
     def loss_func(self, pred, target):
         return self.cross_en(pred.view(-1, pred.size()[-1]), target.view(-1))
+
+    @overrides
+    def make_output_human_readable(
+            self, source_tokens: TextFieldTensors,meta_data: MetadataField, output_dict: Dict[str, torch.Tensor]
+    ) -> Dict[str, Any]:
+        batch_pred_ent_shaking_outputs = output_dict['batch_pred_ent_shaking_outputs']
+        batch_pred_head_rel_shaking_outputs = output_dict['batch_pred_head_rel_shaking_outputs']
+        batch_pred_tail_rel_shaking_outputs = output_dict['batch_pred_tail_rel_shaking_outputs']
+        batch_pred_ent_shaking_tag = torch.argmax(batch_pred_ent_shaking_outputs, dim=-1)
+        batch_pred_head_rel_shaking_tag = torch.argmax(batch_pred_head_rel_shaking_outputs, dim=-1)
+        batch_pred_tail_rel_shaking_tag = torch.argmax(batch_pred_tail_rel_shaking_outputs, dim=-1)
+
+        max_length = max([meta['length'] for meta in meta_data])
+        for ind in range(batch_pred_ent_shaking_tag.size()[0]):
+            pred_ent_shaking_tag = batch_pred_ent_shaking_tag[ind]
+            pred_head_rel_shaking_tag = batch_pred_head_rel_shaking_tag[ind]
+            pred_tail_rel_shaking_tag = batch_pred_tail_rel_shaking_tag[ind]
+
+            ent_matrix_spots, head_rel_matrix_spots, tail_rel_matrix_spots = self.handshaking_tagger.decode_rel_fr_shaking_tag(pred_ent_shaking_tag,
+                                                                              pred_head_rel_shaking_tag,
+                                                                              pred_tail_rel_shaking_tag, max_length)
+        return output_dict
 
     @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
@@ -138,3 +167,4 @@ class TPlinkerModel(Model):
             "head_acc": self._head_exact_match.get_metric(reset),
             "tail_acc": self._tail_exact_match.get_metric(reset),
         }
+        return metrics
