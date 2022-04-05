@@ -7,8 +7,10 @@ from transformers import AutoModel
 from torch import nn
 import torch
 import json
+from overrides import overrides
 from information_extract.extends.modules.HandshakingKernel import HandshakingKernel
 from information_extract.extends.modules.HandshakingTaggingScheme import HandshakingTaggingScheme
+from information_extract.extends.metrics.exact_match import EMAcc
 
 @Model.register("tplinker")
 class TPlinkerModel(Model):
@@ -41,6 +43,11 @@ class TPlinkerModel(Model):
 
         self.ent_add_dist = False
         self.rel_add_dist = False
+
+        # metric
+        self._ent_exact_match = EMAcc()
+        self._head_exact_match = EMAcc()
+        self._tail_exact_match = EMAcc()
 
     def get_logits(self, hidden_state):
         # shaking_hiddens: (batch_size, 1 + ... + seq_len, hidden_size)
@@ -105,15 +112,29 @@ class TPlinkerModel(Model):
         # logits
         ent_shaking_outputs, head_rel_shaking_outputs, tail_rel_shaking_outputs = self.get_logits(last_hidden_state)
 
-        # transfer_tag
-        batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag = self.get_batch_shaking_tag(meta_data, input_ids.device)
+        if meta_data:
+            # transfer_tag
+            batch_ent_shaking_tag, batch_head_rel_shaking_tag, batch_tail_rel_shaking_tag = self.get_batch_shaking_tag(meta_data, input_ids.device)
 
-        # 计算loss
-        loss = self.loss_func(ent_shaking_outputs, batch_ent_shaking_tag) \
-               + self.loss_func(head_rel_shaking_outputs, batch_head_rel_shaking_tag) \
-               + self.loss_func(tail_rel_shaking_outputs, batch_tail_rel_shaking_tag)
-        outputs["loss"] = loss
+            # 计算loss
+            loss = self.loss_func(ent_shaking_outputs, batch_ent_shaking_tag) \
+                   + self.loss_func(head_rel_shaking_outputs, batch_head_rel_shaking_tag) \
+                   + self.loss_func(tail_rel_shaking_outputs, batch_tail_rel_shaking_tag)
+            outputs["loss"] = loss
+
+            # 计算acc
+            outputs["ent_acc"] = self._ent_exact_match(ent_shaking_outputs, batch_ent_shaking_tag)
+            outputs["head_acc"] = self._head_exact_match(head_rel_shaking_outputs, batch_head_rel_shaking_tag)
+            outputs["tail_acc"] = self._tail_exact_match(tail_rel_shaking_outputs, batch_tail_rel_shaking_tag)
         return outputs
 
     def loss_func(self, pred, target):
         return self.cross_en(pred.view(-1, pred.size()[-1]), target.view(-1))
+
+    @overrides
+    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+        metrics = {
+            "ent_acc": self._ent_exact_match.get_metric(reset),
+            "head_acc": self._head_exact_match.get_metric(reset),
+            "tail_acc": self._tail_exact_match.get_metric(reset),
+        }
