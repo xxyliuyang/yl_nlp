@@ -84,7 +84,7 @@ class SpanPreprocessor:
                 if tok_sp[0] == -1:
                     tok_sp[0] = tok_ind
                 tok_sp[1] = tok_ind + 1  # 尾部的index+1操作
-        return char2tok_span
+        return tok2char_span, char2tok_span
 
     def update_token_span(self, record, char2tok_span):
         def char_span2tok_span(char_span, char2tok_span):
@@ -125,7 +125,8 @@ class SpanPreprocessor:
         self.update_entity_list(record, ent2char_spans)
 
         # 3.计算char span与token span的对应关系
-        char2tok_span = self.get_char2tok_span(text)
+        tok2char_span, char2tok_span = self.get_char2tok_span(text)
+        record['tok2char_span'] = tok2char_span
 
         # 4.更新relation、entity的token span信息
         self.update_token_span(record, char2tok_span)

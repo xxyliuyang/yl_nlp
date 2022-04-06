@@ -164,19 +164,86 @@ class HandshakingTaggingScheme(object):
         shaking_ind2matrix_ind = [(ind, end_ind) for ind in range(matrix_size) for end_ind in
                                        list(range(matrix_size))[ind:]]
 
-        matrix_ind2shaking_ind = [[0 for i in range(matrix_size)] for j in range(matrix_size)]
-        for shaking_ind, matrix_ind in enumerate(shaking_ind2matrix_ind):
-            matrix_ind2shaking_ind[matrix_ind[0]][matrix_ind[1]] = shaking_ind
         return shaking_ind2matrix_ind
 
     def decode_rel_fr_shaking_tag(self,
                                   ent_shaking_tag,
                                   head_rel_shaking_tag,
-                                  tail_rel_shaking_tag, max_length):
+                                  tail_rel_shaking_tag,
+                                  max_length, tok2char_span, text):
         shaking_ind2matrix_ind = self.get_shaking_ind2matrix_ind(max_length)
+        rel_list = []
+        tok2char_span.append((0,0)) # [CLS]特殊符号的处理
 
         ent_matrix_spots = self.get_sharing_spots_fr_shaking_tag(ent_shaking_tag, shaking_ind2matrix_ind)
         head_rel_matrix_spots = self.get_spots_fr_shaking_tag(head_rel_shaking_tag, shaking_ind2matrix_ind)
         tail_rel_matrix_spots = self.get_spots_fr_shaking_tag(tail_rel_shaking_tag, shaking_ind2matrix_ind)
 
-        return ent_matrix_spots, head_rel_matrix_spots, tail_rel_matrix_spots
+        # entity
+        head_ind2entities = {}
+        for sp in ent_matrix_spots:
+            tag_id = sp[2]
+            if tag_id != self.tag2id_ent["ENT-H2T"]:
+                continue
+            if max((sp[0], sp[1])) > len(tok2char_span):
+                continue
+
+            char_span_list = tok2char_span[sp[0]:sp[1] + 1]
+            char_sp = [char_span_list[0][0], char_span_list[-1][1]]
+            ent_text = text[char_sp[0]:char_sp[1]]
+
+            head_key = sp[0]  # take head as the key to entity list start with the head token
+            if head_key not in head_ind2entities:
+                head_ind2entities[head_key] = []
+            head_ind2entities[head_key].append({
+                "text": ent_text,
+                "tok_span": [sp[0], sp[1] + 1],
+                "char_span": char_sp,
+            })
+
+        # tail relation
+        tail_rel_memory_set = set()
+        for sp in tail_rel_matrix_spots:
+            rel_id = sp[0]
+            tag_id = sp[3]
+            if tag_id == self.tag2id_tail_rel["REL-ST2OT"]:
+                tail_rel_memory = "{}-{}-{}".format(rel_id, sp[1], sp[2])
+                tail_rel_memory_set.add(tail_rel_memory)
+            elif tag_id == self.tag2id_tail_rel["REL-OT2ST"]:
+                tail_rel_memory = "{}-{}-{}".format(rel_id, sp[2], sp[1])
+                tail_rel_memory_set.add(tail_rel_memory)
+
+        # head relation
+        for sp in head_rel_matrix_spots:
+            rel_id = sp[0]
+            tag_id = sp[3]
+
+            if tag_id == self.tag2id_head_rel["REL-SH2OH"]:
+                subj_head_key, obj_head_key = sp[1], sp[2]
+            elif tag_id == self.tag2id_head_rel["REL-OH2SH"]:
+                subj_head_key, obj_head_key = sp[2], sp[1]
+
+            if subj_head_key not in head_ind2entities or obj_head_key not in head_ind2entities:
+                # no entity start with subj_head_key and obj_head_key
+                continue
+            subj_list = head_ind2entities[subj_head_key]  # all entities start with this subject head
+            obj_list = head_ind2entities[obj_head_key]  # all entities start with this object head
+
+            # go over all subj-obj pair to check whether the relation exists
+            for subj in subj_list:
+                for obj in obj_list:
+                    tail_rel_memory = "{}-{}-{}".format(rel_id, subj["tok_span"][1] - 1, obj["tok_span"][1] - 1)
+                    if tail_rel_memory not in tail_rel_memory_set:
+                        # no such relation
+                        continue
+
+                    rel_list.append({
+                        "subject": subj["text"],
+                        "object": obj["text"],
+                        "subj_tok_span": [subj["tok_span"][0], subj["tok_span"][1]],
+                        "obj_tok_span": [obj["tok_span"][0], obj["tok_span"][1]],
+                        "subj_char_span": [subj["char_span"][0], subj["char_span"][1]],
+                        "obj_char_span": [obj["char_span"][0], obj["char_span"][1]],
+                        "predicate": self.id2rel[rel_id],
+                    })
+        return rel_list

@@ -132,7 +132,7 @@ class TPlinkerModel(Model):
             outputs["tail_acc"] = self._tail_exact_match(tail_rel_shaking_outputs, batch_tail_rel_shaking_tag)
 
             # ---解码---
-            self.make_output_human_readable(source_tokens, meta_data, outputs)
+            self.make_output_human_readable(meta_data, outputs)
         return outputs
 
     def loss_func(self, pred, target):
@@ -140,7 +140,7 @@ class TPlinkerModel(Model):
 
     @overrides
     def make_output_human_readable(
-            self, source_tokens: TextFieldTensors,meta_data: MetadataField, output_dict: Dict[str, torch.Tensor]
+            self, meta_data: MetadataField, output_dict: Dict[str, torch.Tensor]
     ) -> Dict[str, Any]:
         batch_pred_ent_shaking_outputs = output_dict['batch_pred_ent_shaking_outputs']
         batch_pred_head_rel_shaking_outputs = output_dict['batch_pred_head_rel_shaking_outputs']
@@ -149,15 +149,22 @@ class TPlinkerModel(Model):
         batch_pred_head_rel_shaking_tag = torch.argmax(batch_pred_head_rel_shaking_outputs, dim=-1)
         batch_pred_tail_rel_shaking_tag = torch.argmax(batch_pred_tail_rel_shaking_outputs, dim=-1)
 
+        batch_rel_list = []
         max_length = max([meta['length'] for meta in meta_data])
         for ind in range(batch_pred_ent_shaking_tag.size()[0]):
             pred_ent_shaking_tag = batch_pred_ent_shaking_tag[ind]
             pred_head_rel_shaking_tag = batch_pred_head_rel_shaking_tag[ind]
             pred_tail_rel_shaking_tag = batch_pred_tail_rel_shaking_tag[ind]
 
-            ent_matrix_spots, head_rel_matrix_spots, tail_rel_matrix_spots = self.handshaking_tagger.decode_rel_fr_shaking_tag(pred_ent_shaking_tag,
+            tok2char_span = meta_data[ind]['tok2char_span']
+            text = meta_data[ind]['text']
+
+            rel_list = self.handshaking_tagger.decode_rel_fr_shaking_tag(pred_ent_shaking_tag,
                                                                               pred_head_rel_shaking_tag,
-                                                                              pred_tail_rel_shaking_tag, max_length)
+                                                                              pred_tail_rel_shaking_tag,
+                                                                              max_length, tok2char_span, text)
+            batch_rel_list.append(rel_list)
+        output_dict['batch_rel_list'] = batch_rel_list
         return output_dict
 
     @overrides

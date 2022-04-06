@@ -67,9 +67,11 @@ class TPlinkerReader(DatasetReader):
 
         # 2，构建目标
         length = len(tokenized_source)
-        ent_shaking_tag, head_rel_shaking_tag, tail_rel_shaking_tag = self.prepare_tag_matrix(record, length)
+        ent_shaking_tag, head_rel_shaking_tag, tail_rel_shaking_tag, tok2char_span, = self.prepare_tag_matrix(record, length)
         meta_field = MetadataField({
             "length": length,
+            "text": text,
+            "tok2char_span": tok2char_span,
             "ent_shaking_tag": ent_shaking_tag,
             "head_rel_shaking_tag": head_rel_shaking_tag,
             "tail_rel_shaking_tag": tail_rel_shaking_tag,
@@ -93,7 +95,7 @@ class TPlinkerReader(DatasetReader):
         ent_shaking_tag = self.handshaking_tagger.sharing_spots2shaking_tag(ent_matrix_spots, length)
         head_rel_shaking_tag = self.handshaking_tagger.spots2shaking_tag(head_rel_matrix_spots, length)
         tail_rel_shaking_tag = self.handshaking_tagger.spots2shaking_tag(tail_rel_matrix_spots, length)
-        return ent_shaking_tag, head_rel_shaking_tag, tail_rel_shaking_tag
+        return ent_shaking_tag, head_rel_shaking_tag, tail_rel_shaking_tag, record['tok2char_span']
 
 if __name__ == '__main__':
     from allennlp.data.tokenizers import PretrainedTransformerTokenizer
